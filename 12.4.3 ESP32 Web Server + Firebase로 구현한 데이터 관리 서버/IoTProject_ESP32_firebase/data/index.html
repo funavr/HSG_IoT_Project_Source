@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 IoT System</title>
+  <!-- include JQuery js-->
+  <script
+    src="https://code.jquery.com/jquery-3.6.0.min.js"
+    integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4="
+    crossorigin="anonymous"></script>
+  <!-- include chart js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- bootstrap css -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+  <!-- bootstrap icon css -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.1/font/bootstrap-icons.css">
+
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+</head>
+
+<body>
+  <!-- nav bar -->
+  <nav class="navbar navbar-light bg-light">
+    <div class="container_fluid mx-auto">
+      <!-- title -->
+      <div class="navbar-brand fw-bold">
+        <h1>온·습도 모니터링</h1>
+      </div>
+    </div>
+  </nav>
+
+  <!-- humidity alert -->
+  <div id="alert_humidity" class="alert alert-danger text-center" role="alert">
+    습도가 제한된 수치를 넘었습니다.
+  </div>
+
+  <!-- humidity alert -->
+  <div id="alert_temperature" class="alert alert-danger text-center" role="alert">
+    온도가 제한된 수치를 넘었습니다.
+  </div>
+
+  <!-- humidity alert -->
+  <div id="alert_temperature_humidity" class="alert alert-danger text-center" role="alert">
+    온·습도가 제한된 수치를 넘었습니다.
+  </div>
+
+  <script>
+    $("#alert_humidity").hide();
+    $("#alert_temperature").hide();
+    $("#alert_temperature_humidity").hide();
+  </script>
+
+  <!-- content body -->
+  <div class="container">
+    <!-- update time , interval -->
+    <div class="row">
+      <div class="col m-3">
+        <h3>최근 업데이트된 시간: <span id="data_updated_time"> -- : -- : -- </span></h3>
+      </div>
+      <div class="col m-3">
+        <h3>온·습도 측정 주기: <span id="interval_time"> -- </span> 초<button type="button" class="btn btn-primary float-end"
+            data-bs-toggle="modal" data-bs-target="#change_interval">주기 변경</button></h3>
+        <!-- change interval modal page -->
+        <div class="modal fade" id="change_interval" tabindex="-1" aria-labelledby="change_interval_modal"
+          aria-hidden="true">
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="change_interval_modal">센서 측정 주기 변경</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <!-- title -->
+                <label for="setting_interval" class="form-label">센서 측정 주기 입력</label>
+                <!-- input new interval -->
+                <div class="input-group mb-3">
+                  <input id="input_setting_interval" type="number" class="form-control" placeholder="60초 ~ 3600초(1시간)">
+                  <div class="input-group-append">
+                    <span class="input-group-text">초</span>
+                  </div>
+                </div>
+              </div>
+              <!-- button -->
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <!-- save interval button -->
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal"
+                  onclick="submit_interval()">저장</button>
+                <script>
+                  function submit_interval() {
+                    // get value
+                    let value = $("#input_setting_interval").val();
+
+                    // reset input
+                    $("#input_setting_interval").val('');
+
+                    if (!value) {
+                      return;
+                    }
+
+                    // interval check
+                    if (value < 60 || value > 3600) {
+                      // show error modal page 
+                      $('#error_setting_interval').modal('show');
+                      return;
+                    }
+
+                    // send interval setting to esp32
+                    $.ajax({
+                      type: 'POST',
+                      url: '/interval',
+                      data: { interval: value },
+                      success: function (data) {
+                        if (data == 0) {
+                          // fail
+                          alert('주기 설정에 실패하였습니다.');
+                        }
+                        else {
+                          // success
+                          alert("주기 설정에 성공하였습니다.");
+                          // 주기 값 변경
+                          $('#interval_time').text(data);
+                          SetIntervalData(data * 1000);
+                        }
+                      }
+                    })
+                  }
+                </script>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- error setting interval model -->
+        <div class="modal fade" id="error_setting_interval" tabindex="-1" role="dialog"
+          aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+              <!-- <div class="modal-header">
+                <h5 class="modal-title" id="exampleModalLongTitle">Modal title</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div> -->
+              <div class="modal-body">
+                <h5>주기는 60초에서 3600초 사이여야 합니다.</h5>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary"
+                  onclick="close_error_setting_interval_modal()">Close</button>
+              </div>
+              <script>
+                function close_error_setting_interval_modal() {
+                  $("#error_setting_interval").modal('hide');
+                }
+              </script>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col m-3">
+        <div class="card">
+          <div class="card-body">
+            <h2 class="card-title text-center">
+              <span><i class="bi bi-droplet"></i></span>
+               습도
+              <span class="h6">
+                제한값: 
+                <span id="setting_humidity"> --.-- </span>%
+                <button class="btn btn-danger btn-xs" data-bs-toggle="modal" data-bs-target="#setting_humidity_modal" style="margin-top: -10px;">
+                  <i class="bi bi-moisture"></i>
+                </button>
+              </span>
+            </h2>
+            <h3 class="card-text text-center"><span id="data_humidity"> --.-- </span> % </h3>
+          </div>
+        </div>
+      </div>
+      <!-- setting alarm humidity-->
+      <div class="modal fade" id="setting_humidity_modal" tabindex="-1" aria-labelledby="setting_humidity_modal_title"
+        aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="setting_humidity_modal_title"></h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <!-- title -->
+              <label for="input_setting_humidity" class="form-label">습도 센서 제한값 설정</label>
+              <!-- input new interval -->
+              <div class="input-group mb-3">
+                <input id="input_setting_humidity" type="number" class="form-control" placeholder="20% ~ 90%">
+                <div class="input-group-append">
+                  <span class="input-group-text">%</span>
+                </div>
+              </div>
+            </div>
+            <!-- button -->
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+              <!-- save interval button -->
+              <button type="button" class="btn btn-primary" data-bs-dismiss="modal"
+                onclick="submit_humidity()">저장</button>
+              <script>
+                function submit_humidity() {
+                  // get value
+                  let value = $("#input_setting_humidity").val();
+
+                  // reset input
+                  $("#input_setting_humidity").val('');
+
+                  if (!value) {
+                    return;
+                  }
+
+                  // interval check
+                  if (value < 20 || value > 90) {
+                    // show error modal page 
+                    $('#error_setting_humidity_modal').modal('show');
+                    return;
+                  }
+
+                  // send interval setting to esp32
+                  $.ajax({
+                    type: 'POST',
+                    url: '/humidity',
+                    data: { humidity: value },
+                    success: function (data) {
+                      if (data == 0) {
+                        // fail
+                        alert('습도 설정에 실패하였습니다.');
+                      }
+                      else {
+                        // success
+                        alert("습도 설정에 성공하였습니다.");
+                        // 주기 값 변경
+                        $('#setting_humidity').text(data);
+
+                        setting_check_humidity = data;
+
+                        ShowAlertBox(setting_check_temperature, setting_check_humidity, temperature_data[temperature_data.length - 1], humidity_data[humidity_data.length - 1]);
+                      }
+                    }
+                  })
+                }
+              </script>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal fade" id="error_setting_humidity_modal" tabindex="-1" role="dialog"
+        aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+          <div class="modal-content">
+            <!-- <div class="modal-header">
+              <h5 class="modal-title" id="exampleModalLongTitle">Modal title</h5>
+              <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div> -->
+            <div class="modal-body">
+              <h5>알람 설정 습도는 20%에서 90% 사이여야 합니다.</h5>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary"
+                onclick="close_error_setting_humidity_modal()">Close</button>
+            </div>
+            <script>
+              function close_error_setting_humidity_modal() {
+                $("#error_setting_humidity_modal").modal('hide');
+              }
+            </script>
+          </div>
+        </div>
+      </div>
+      <div class="col m-3">
+        <div class="card">
+          <div class="card-body">
+            <h2 class="card-title text-center">
+              <span>
+                <i class="bi bi-thermometer"></i>
+              </span> 온도
+              <span class="h6">
+                제한값: 
+                <span id="setting_temperature"> --.-- </span>℃
+                <button class="btn btn-danger btn-xs" data-bs-toggle="modal" data-bs-target="#setting_temperature_modal" style="margin-top: -10px;">
+                  <i class="bi bi-thermometer-high"></i>
+                </button>
+              </span>
+            </h2>
+            <h3 class="card-text text-center">
+              <span id="data_temperature"> --.-- </span> ℃ 
+          </div>
+        </div>
+      </div>
+      <!-- setting alarm temperature-->
+      <div class="modal fade" id="setting_temperature_modal" tabindex="-1"
+        aria-labelledby="setting_temperature_modal_title" aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="setting_temperature_modal_title"></h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <!-- title -->
+              <label for="input_setting_temperature" class="form-label">온도 센서 제한값 설정</label>
+              <!-- input new interval -->
+              <div class="input-group mb-3">
+                <input id="input_setting_temperature" type="number" class="form-control" placeholder="1℃ ~ 50℃">
+                <div class="input-group-append">
+                  <span class="input-group-text">℃</span>
+                </div>
+              </div>
+            </div>
+            <!-- button -->
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+              <!-- save interval button -->
+              <button type="button" class="btn btn-primary" data-bs-dismiss="modal"
+                onclick="submit_temperature()">저장</button>
+              <script>
+                function submit_temperature() {
+                  // get value
+                  let value = $("#input_setting_temperature").val();
+
+                  // reset input
+                  $("#input_setting_temperature").val('');
+
+                  if (!value) {
+                    return;
+                  }
+
+                  // interval check
+                  if (value < 1 || value > 50) {
+                    // show error modal page 
+                    $('#error_setting_temperature_modal').modal('show');
+                    return;
+                  }
+
+                  // send interval setting to esp32
+                  $.ajax({
+                    type: 'POST',
+                    url: '/temperature',
+                    data: { temperature: value },
+                    success: function (data) {
+                      if (data == 0) {
+                        // fail
+                        alert('온도 설정에 실패하였습니다.');
+                      }
+                      else {
+                        // success
+                        alert("온도 설정에 성공하였습니다.");
+                        // 온도 값 변경
+                        $('#setting_temperature').text(data);
+
+                        setting_check_temperature = data;
+
+                        ShowAlertBox(setting_check_temperature, setting_check_humidity, temperature_data[temperature_data.length - 1], humidity_data[humidity_data.length - 1]);
+                      }
+                    }
+                  })
+                }
+              </script>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal fade" id="error_setting_temperature_modal" tabindex="-1" role="dialog"
+        aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+          <div class="modal-content">
+            <!-- <div class="modal-header">
+              <h5 class="modal-title" id="exampleModalLongTitle">Modal title</h5>
+              <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div> -->
+            <div class="modal-body">
+              <h5>알람 설정 온도는 1℃에서 50℃ 사이여야 합니다.</h5>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary"
+                onclick="close_error_setting_temperature_modal()">Close</button>
+            </div>
+            <script>
+              function close_error_setting_temperature_modal() {
+                $("#error_setting_temperature_modal").modal('hide');
+              }
+            </script>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+
+    <div class="row">
+      <div class="col m-3">
+        <div class="card">
+          <div style="height:300px">
+            <canvas id="humidity_chart" style="height:100%;width:100%;"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col m-3">
+        <div class="card">
+          <div style="height:300px;">
+            <canvas id="temperature_chart" style="height:100%;width:100%;"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="row">
+      <div class="col m-3">
+        <div class="card">
+          
+
+          <div class="card-title mx-auto">
+            <span>
+              <h3 class="text-center m-3">지난 기록 조회하기</h3>
+              <input id="search_range" type="text" name="datetimes" class="text-center" style="width: 340px;" />
+            </span>
+            
+            <span>
+              <button class="btn btn-primary" onclick="searchLog()" style="margin-top: -5px;">조회하기</button>
+            </span>
+            
+            <span>
+              <a id="log_down_btn_1" class="btn btn-primary" style="margin-top: -5px;">습도 조회 결과 다운로드</a>
+            </span>
+
+            <span>
+              <a id="log_down_btn_2" class="btn btn-primary" style="margin-top: -5px;">온도 조회 결과 다운로드</a>
+            </span>
+            
+            <script>
+              function downLogHumi() {
+                console.log('down log humi', csv_data_humidity);
+                var encodedUri_humi = encodeURI(csv_data_humidity);
+                window.open(encodedUri_humi);
+              }
+
+              function downLogTemp() {
+                console.log('down log temp', csv_data_temperature);
+                var encodedUri_temp = encodeURI(csv_data_temperature);
+                window.open(encodedUri_temp);
+              }
+            </script>
+
+            <div id="log_avg" class="mt-3">
+              <h5>평균 습도: <span id="log_avg_humidity"></span></h5>
+              <h5>평균 온도: <span id="log_avg_temperature"></span></h5>
+              <br>
+              <h5>기간 내 최고 습도: <span id="log_max_humidity_value"></span> ( <span id="log_max_humidity_time"></span> )</h5>
+              <h5>기간 내 최고 온도: <span id="log_max_temperature_value"></span> ( <span id="log_max_temperature_time"></span> )</h5>
+            </div>
+          </div>
+
+          <script>
+            $("#log_avg").hide();
+            $("#log_down_btn_1").hide();
+            $("#log_down_btn_2").hide();
+          </script>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col m-3">
+        <div class="card">
+          <div style="height:300px;">
+            <canvas id="humidity_log_chart" style="height:100%;width:100%;"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col m-3">
+        <div class="card">
+          <div style="height:300px;">
+            <canvas id="temperature_log_chart" style="height:100%;width:100%;"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+
+    <!-- <div class="row">
+      <div class="col m-3">
+        <div class="card">
+  
+        </div>
+      </div>
+    </div> -->
+  </div>
+  
+  <!--
+  <section>
+    <p>Humidity: <span id="data_humidity">데이터 없음</span></p>
+    <p>Temperature: <span id="data_temperature">데이터 없음</span></p>
+    <p>Update Time: <span id="data_updated_time">데이터 없음</span></p>
+  </section>
+
+  <section>
+    <canvas id="sensor_chart" style="height:500px;max-height:500px;width:100%;max-width:700px"></canvas>
+  </section>
+
+  <section>
+    <canvas id="humidity_chart" style="height:500px;max-height:500px;width:100%;max-width:700px"></canvas>
+  </section>
+
+  <section>
+    <canvas id="temperature_chart" style="height:500px;max-height:500px;width:100%;max-width:700px"></canvas>
+  </section>
+  -->
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p"
+    crossorigin="anonymous"></script>
+
+  <script>
+    var humidity_data = [];
+    var temperature_data = [];
+    var xLabels = [];
+    var log_temperature_time = [];
+    var log_temperature_value = [];
+    var log_humidity_time = [];
+    var log_humidity_value = [];
+
+    var csv_data_temperature = '';
+    var csv_data_humidity = '';
+
+    var interval_handle;
+
+    var setting_check_temperature = 0;
+    var setting_check_humidity = 0;
+
+
+    var log_temperature_chart = new Chart($("#temperature_log_chart"), {
+      type: "line",
+      data: {
+        labels: log_temperature_time,
+        datasets: [
+          {
+            label: "온도",
+            data: log_temperature_value,
+            borderColor: "red",
+            fill: true
+          }
+        ]
+      },
+      options: {
+        plugins: {
+          legend: {
+            display: false
+          },
+          title: {
+            display: true,
+            text: "온도",
+          }
+        },
+        //   scales: {
+        //     y: {
+        //       min: 0,
+        //       max: 100,
+        //     }
+        //   }
+      }
+    });
+
+    var log_humidity_chart = new Chart($("#humidity_log_chart"), {
+      type: "line",
+      data: {
+        labels: log_humidity_time,
+        datasets: [
+          {
+            label: "습도",
+            data: log_humidity_value,
+            borderColor: "red",
+            fill: true
+          }
+        ]
+      },
+      options: {
+        plugins: {
+          legend: {
+            display: false
+          },
+          title: {
+            display: true,
+            text: "습도",
+          }
+        },
+        //   scales: {
+        //     y: {
+        //       min: 0,
+        //       max: 100,
+        //     }
+        //   }
+      }
+    })
+
+    var humidity_chart = new Chart($("#humidity_chart"), {
+      type: "line",
+      data: {
+        labels: xLabels,
+        datasets: [
+          {
+            label: "습도",
+            data: humidity_data,
+            borderColor: "red",
+            fill: true
+          }
+        ]
+      },
+      options: {
+        plugins: {
+          legend: {
+            display: false
+          },
+          title: {
+            display: true,
+            text: "습도",
+          }
+        },
+        //   scales: {
+        //     y: {
+        //       min: 0,
+        //       max: 100,
+        //     }
+        //   }
+      }
+    })
+
+    var temperature_chart = new Chart($("#temperature_chart"), {
+      type: "line",
+      data: {
+        labels: xLabels,
+        datasets: [
+          {
+            label: "온도",
+            data: temperature_data,
+            borderColor: "red",
+            fill: true
+          }
+        ]
+      },
+      options: {
+        plugins: {
+          legend: {
+            display: false
+          },
+          title: {
+            display: true,
+            text: "온도",
+          }
+        },
+        // scales: {
+        //   y: {
+        //     min: 0,
+        //     max: 50,
+        //   }
+        // }
+      }
+    })
+
+    function getUpdatedTime() {
+      var time = new Date();
+      return time.getHours() + "시 " + time.getMinutes() + "분 " + time.getSeconds() + "초";
+    }
+
+    function CheckLimitOver(limit_temperature, limit_humidity, current_temperature, current_humidity) {
+      let limit_over_temperature  = false;
+      let limit_over_humidity = false;
+
+      if (limit_temperature <= current_temperature) {
+        limit_over_temperature = true;
+      }
+
+      if (limit_humidity <= current_humidity) {
+        limit_over_humidity = true;
+      }
+
+      if (limit_temperature == 0) {
+        limit_over_temperature = false;
+      }
+
+      if (limit_humidity == 0) {
+        limit_over_humidity = false;
+      }
+
+      return {limit_over_temperature: limit_over_temperature, limit_over_humidity: limit_over_humidity};
+    }
+
+    function ShowAlertBox(limit_temperature, limit_humidity, current_temperature, current_humidity) {
+      let {limit_over_temperature, limit_over_humidity} = CheckLimitOver(limit_temperature, limit_humidity, current_temperature, current_humidity);
+
+      if (limit_over_humidity && limit_over_temperature) {
+        $("#alert_temperature_humidity").show();
+        $("#alert_humidity").hide();
+        $("#alert_temperature").hide();
+        return;
+      } else {
+        $("#alert_temperature_humidity").hide();
+      }
+
+      if (limit_over_humidity) {
+        $("#alert_humidity").show();
+      } else {
+        $("#alert_humidity").hide();
+      }
+
+      if (limit_over_temperature) {
+        $("#alert_temperature").show();
+      } else {
+        $("#alert_temperature").hide();
+      }
+
+    }
+
+    function GetDataAjax() {
+      $(function () {
+        $.ajax({
+          type: 'GET',
+          url: '/data',
+          success: function (data) {
+            var humidity = data.split(',')[0];
+            var temperature = data.split(',')[1];
+            var updated_time = getUpdatedTime();
+
+            ShowAlertBox(setting_check_temperature, setting_check_humidity, temperature, humidity);
+
+            if (humidity_data.length > 50) {
+              humidity_data.shift();
+            }
+
+            if (temperature_data.length > 50) {
+              temperature_data.shift();
+            }
+
+            if (xLabels.length > 50) {
+              xLabels.shift();
+            }
+
+            humidity_data.push(humidity);
+            temperature_data.push(temperature);
+            xLabels.push(updated_time);
+
+            $('#data_humidity').text(humidity);
+            $('#data_temperature').text(temperature);
+            $('#data_updated_time').text(updated_time);
+
+            // sensor_chart.update();
+            humidity_chart.update();
+            temperature_chart.update();
+          }
+        })
+      });
+    }
+
+    // 데이터를 가져오는 interval 를 설정한다.
+    function SetIntervalData(_interval_ms) {
+      if (interval_handle) {
+        clearInterval(interval_handle);
+      }
+      GetDataAjax();
+      interval_handle = setInterval(() => { GetDataAjax(); }, _interval_ms + 2000);
+    }
+
+    // 초기 설정 주기 값 가져오기
+    $(function () {
+      $.ajax({
+        type: "GET",
+        url: "/interval",
+        success: function (data) {
+          data = Number(data);
+
+          $('#interval_time').text(data);
+          // interval 종료
+          // clearInterval(frist_setting_interval);
+          // setting data get interval
+          if (interval_handle) {
+            cleartInterval(interval_handle);
+          }
+
+          SetIntervalData(data * 1000);
+        }
+      })
+      
+      $.ajax({
+        type: "GET",
+        url: "/temperature",
+        success: function (data) {
+          // clearInterval(first_setting_temperature);
+
+          setting_check_temperature = data;
+
+          if (data > 0 && data <= 50) {
+            $("#setting_temperature").text(data);
+          }
+        }
+      });
+      
+      $.ajax({
+        type: "GET",
+        url: "/humidity",
+        success: function (data) {
+          // clearInterval(frist_setting_humidity);
+
+          setting_check_humidity = data;
+
+          if (data >= 20 && data <= 90) {
+            $("#setting_humidity").text(data);
+          }
+        }
+      });
+    });
+
+    // var log_temperature_time = [];
+    // var log_temperature_value = [];
+    // var log_humidity_time = [];
+    // var log_humidity_value = [];
+
+    function searchLog() {
+      let avg_humidity;
+      let avg_temperature; 
+
+      $("#log_avg").show();
+
+      let range = $("#search_range").val();
+
+      let start = range.split('-')[0].trim();
+      let end = range.split('-')[1].trim();
+
+      start = start.replaceAll('/', '-');
+      end = end.replaceAll('/', '-');
+
+      $.ajax({
+        type: "GET",
+        url: "/log/temperature",
+        data: {start: start, end: end},
+        success: function(data) {
+          
+          console.log('data', data);
+          
+          log_temperature_time = [];
+          log_temperature_value = [];
+
+          // data = data.split('/');
+          data = JSON.parse(data);
+          dateArr = Object.keys(data);
+          
+          csv_data_temperature = 'data:text/csv;charset=utf-8,';
+
+          for (let i = 0; i < dateArr.length; i++) {
+            if (!dateArr[i]) {
+              continue;
+            }
+            console.log(dateArr[i], data[dateArr[i]]);
+
+            // let p_time = data[i].split('=')[0];
+            // let p_temp = data[i].split('=')[1];
+
+            let p_time = dateArr[i];
+            let p_temp = data[dateArr[i]];
+
+            csv_data_temperature += p_time + ',' + p_temp + '\r\n';
+
+            // log_temperature_time.push(data[i].split('=')[0]);  
+            // log_temperature_value.push(Number(data[i].split('=')[1]));  
+
+            log_temperature_time.push(p_time);  
+            log_temperature_value.push(Number(p_temp));  
+          }
+
+          console.log('log_temperature_value', log_temperature_value);
+          console.log('log_temperature_time', log_temperature_time);
+          console.log('log_temperature_chart', log_temperature_chart);
+
+          log_temperature_chart.data.labels = log_temperature_time;
+          log_temperature_chart.data.datasets[0].data = log_temperature_value;
+
+          log_temperature_chart.update();
+
+          avg_temperature = 0;
+
+          for (let i = 0; i < log_temperature_value.length; i++) {
+            avg_temperature += log_temperature_value[i];        
+          }
+
+
+          console.log('sum temperature', avg_temperature);
+          console.log('temperature length', log_temperature_value.length);
+
+          avg_temperature /= log_temperature_value.length;
+
+          console.log('avg temperature', avg_temperature);
+          $("#log_avg_temperature").text(avg_temperature.toFixed(2));
+
+          let max_temperature = 0;
+          let i = 0;
+          let j = 0;
+          for (; i < log_temperature_value.length; i++) {
+            if (max_temperature < log_temperature_value[i]) {
+              max_temperature = log_temperature_value[i];
+              j = i;
+            }
+          }
+
+          console.log('log max temperature value', max_temperature);
+          console.log('log max temperature time', log_temperature_time[j]);
+
+          $("#log_max_temperature_value").text(max_temperature);
+          $("#log_max_temperature_time").text(log_temperature_time[j]);
+
+          csv_data_temperature += avg_temperature.toFixed(2) + '\r\n';
+          csv_data_temperature += max_temperature + ',' + log_temperature_time[j] + '\r\n';
+          
+          var encodedUri_temp = encodeURI(csv_data_temperature);
+
+          $("#log_down_btn_2").show();
+          $("#log_down_btn_2").prop('href', encodedUri_temp)
+          $("#log_down_btn_2").prop("download", range + "_temperature.csv");
+        } 
+      })
+
+      $.ajax({
+        type: "GET",
+        url: "/log/humidity",
+        data: {start: start, end: end},
+        success: function(data) {
+          
+          log_humidity_time = [];
+          log_humidity_value = [];
+
+          // data = data.split('/');
+
+          data = JSON.parse(data);
+          dateArr = Object.keys(data);
+
+          csv_data_humidity = 'data:text/csv;charset=utf-8,';
+          
+          
+          for (let i = 0; i < dateArr.length; i++) {
+            if (!dateArr[i]) {
+              continue;
+            }
+            console.log(dateArr[i], data[dateArr[i]]);
+
+            // let p_time = data[i].split('=')[0];
+            // let p_humi = data[i].split('=')[1];
+
+            let p_time = dateArr[i];
+            let p_humi = data[dateArr[i]];
+
+            csv_data_humidity += p_time + ',' + p_humi + '\r\n';
+
+            // log_humidity_time.push(data[i].split('=')[0]);  
+            // log_humidity_value.push(Number(data[i].split('=')[1]));  
+
+            log_humidity_time.push(p_time);  
+            log_humidity_value.push(Number(p_humi));  
+          }
+
+          console.log('log_humidity_value', log_humidity_value);
+          console.log('log_humidity_time', log_humidity_time);
+          console.log('log_humidity_chart', log_humidity_chart);
+
+          log_humidity_chart.data.labels = log_humidity_time;
+          log_humidity_chart.data.datasets[0].data = log_humidity_value;
+          
+          log_humidity_chart.update();
+          console.log('log_humidity_chart', log_humidity_chart.update());
+
+          avg_humidity = 0;
+
+          for (let i = 0; i < log_humidity_value.length; i++) {
+            avg_humidity += log_humidity_value[i];        
+          }
+
+          console.log('sum humidity', avg_humidity);
+          console.log('humidity length', log_humidity_value.length);
+          
+          avg_humidity /= log_humidity_value.length;
+
+          console.log('avg humidity', avg_humidity);
+          $("#log_avg_humidity").text(avg_humidity.toFixed(2));
+
+          let max_humidity = 0;
+          let i = 0;
+          let j = 0;
+          for (; i < log_humidity_value.length; i++) {
+            if (max_humidity < log_humidity_value[i]) {
+              max_humidity = log_humidity_value[i];
+              j = i;
+            }
+          }
+
+          console.log('max humidity value', max_humidity);
+          console.log('max humidity time', log_humidity_time[j])
+
+          $("#log_max_humidity_value").text(max_humidity);
+          $("#log_max_humidity_time").text(log_humidity_time[j]);
+
+          csv_data_humidity += avg_humidity.toFixed(2) + '\r\n';
+          csv_data_humidity += max_humidity + ',' + log_humidity_time[j] + '\r\n';
+
+          var encodedUri_humi = encodeURI(csv_data_humidity);
+
+          $("#log_down_btn_1").show();
+          $("#log_down_btn_1").prop('href', encodedUri_humi);
+          $("#log_down_btn_1").prop("download", range + "_humidity.csv");
+        } 
+      })
+    }
+
+
+    $(function() {
+      $('input[name="datetimes"]').daterangepicker({
+        timePicker: true,
+        startDate: moment().startOf('hour'),
+        endDate: moment().startOf('hour').add(32, 'hour'),
+        locale: {
+          format: 'YYYY/MM/DD hh:mm:ss'
+        }
+      });
+    });
+
+
+  </script>
+</body>
+
+</html>
